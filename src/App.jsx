@@ -247,10 +247,13 @@ const App = () => {
             utilization: percentToTarget, // for charts
         };
     });
+    
+    // Filter out employees with zero hours for overall metrics
+    const activeEmployees = employees.filter(e => e.totalBookedHours > 0);
 
-    // Aggregate by department
+    // Aggregate by department using only active employees
     const departmentMap = new Map();
-    employees.forEach(e => {
+    activeEmployees.forEach(e => {
         if (!departmentMap.has(e.department)) {
             departmentMap.set(e.department, {
                 name: e.department,
@@ -268,13 +271,13 @@ const App = () => {
         utilization: d.requiredBillableHours > 0 ? (d.bookedBillable / d.requiredBillableHours) * 100 : 0,
     }));
 
-    // Calculate overall totals
+    // Calculate overall totals using only active employees
     const overall = {
-        bookedBillable: employees.reduce((s, e) => s + e.bookedBillable, 0),
-        bookedNonBillable: employees.reduce((s, e) => s + e.bookedNonBillable, 0),
-        totalBookedHours: employees.reduce((s, e) => s + e.totalBookedHours, 0),
-        requiredBillableHours: employees.reduce((s, e) => s + e.requiredBillableHours, 0),
-        employeeCount: employees.length,
+        bookedBillable: activeEmployees.reduce((s, e) => s + e.bookedBillable, 0),
+        bookedNonBillable: activeEmployees.reduce((s, e) => s + e.bookedNonBillable, 0),
+        totalBookedHours: activeEmployees.reduce((s, e) => s + e.totalBookedHours, 0),
+        requiredBillableHours: activeEmployees.reduce((s, e) => s + e.requiredBillableHours, 0),
+        employeeCount: activeEmployees.length,
         monthsInScope,
     };
     overall.utilization = overall.requiredBillableHours > 0 ? (overall.bookedBillable / overall.requiredBillableHours) * 100 : 0;
@@ -319,6 +322,11 @@ const App = () => {
     let sortableItems = [...analysis.employees];
     if (sortConfig.key) {
         sortableItems.sort((a, b) => {
+            // Primary sort: employees with 0 hours go to the bottom
+            if (a.totalBookedHours > 0 && b.totalBookedHours === 0) return -1;
+            if (a.totalBookedHours === 0 && b.totalBookedHours > 0) return 1;
+
+            // Secondary sort: based on the selected column
             const valA = a[sortConfig.key];
             const valB = b[sortConfig.key];
             
@@ -539,7 +547,10 @@ const App = () => {
                     </thead>
                     <tbody>
                       {sortedEmployees.map(e => (
-                        <tr key={e.nameForDisplay} onClick={() => setActiveEmployee(e)} className="hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0">
+                        <tr key={e.nameForDisplay} 
+                            onClick={() => setActiveEmployee(e)} 
+                            className={`hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-b-0 ${e.totalBookedHours === 0 ? 'text-slate-400' : ''}`}
+                        >
                           <td className="p-3 font-semibold">{e.nameForDisplay} <span className="block text-xs font-normal text-slate-400">{e.title}</span></td>
                           <td className="p-3">{e.department}</td>
                           <td className="p-3 text-right font-medium">{e.requiredBillableHours.toFixed(1)}</td>
@@ -547,7 +558,7 @@ const App = () => {
                           <td className="p-3 text-right">{e.targetPercentDisplay.toFixed(0)}%</td>
                           <td className="p-3 text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <span className="font-bold text-indigo-600">{e.percentToTarget.toFixed(1)}%</span>
+                              <span className={`font-bold ${e.totalBookedHours === 0 ? '' : 'text-indigo-600'}`}>{e.percentToTarget.toFixed(1)}%</span>
                               <div className="w-16 bg-slate-200 rounded-full h-2">
                                 <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${Math.min(e.percentToTarget, 100)}%` }}></div>
                               </div>
@@ -615,6 +626,6 @@ const App = () => {
       )}
     </div>
   );
-}; 
+};
 
 export default App;
