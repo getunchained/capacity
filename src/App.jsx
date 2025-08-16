@@ -43,6 +43,48 @@ const getCurrentMonthYear = () => {
 // sharing settings are "Anyone with the link can view".
 const SPREADSHEET_ID = "1EJE7oAN2Tyb3RxW3XBYaoRj4bcyrPaJhhzzBDFDj5Nw";
 
+// --- Custom Components ---
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload;
+    // % of POTENTIAL hours that are booked as billable
+    const utilizationOfPotential = data.totalPotentialHours > 0 ? (data.bookedBillable / data.totalPotentialHours) * 100 : 0;
+
+
+    return (
+      <div className="bg-white p-4 rounded-lg shadow-lg border border-slate-200 w-64">
+        <p className="font-bold text-slate-800 mb-2">{label}</p>
+        <div className="space-y-1 text-sm">
+          <div className="flex justify-between items-center">
+            <span className="text-slate-500">Utilization (vs Target):</span>
+            <span className="font-semibold text-indigo-600">{data.utilization.toFixed(1)}%</span>
+          </div>
+           <div className="flex justify-between items-center">
+            <span className="text-slate-500">Utilization (vs Potential):</span>
+            <span className="font-semibold">{utilizationOfPotential.toFixed(1)}%</span>
+          </div>
+          <hr className="my-1"/>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-500">Total Potential Hours:</span>
+            <span className="font-semibold">{data.totalPotentialHours.toLocaleString(undefined, {maximumFractionDigits: 0})}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-500">Total Required Hours:</span>
+            <span className="font-semibold">{data.requiredBillableHours.toLocaleString(undefined, {maximumFractionDigits: 1})}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-slate-500">Hours Booked:</span>
+            <span className="font-semibold">{data.totalBookedHours.toLocaleString(undefined, {maximumFractionDigits: 1})}</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+
 // --- Main App Component ---
 const App = () => {
   // --- State Management ---
@@ -259,17 +301,25 @@ const App = () => {
                 name: e.department,
                 bookedBillable: 0,
                 requiredBillableHours: 0,
+                totalBookedHours: 0,
+                employeeCount: 0,
             });
         }
         const dept = departmentMap.get(e.department);
         dept.bookedBillable += e.bookedBillable;
         dept.requiredBillableHours += e.requiredBillableHours;
+        dept.totalBookedHours += e.totalBookedHours;
+        dept.employeeCount += 1;
     });
 
-    const departments = Array.from(departmentMap.values()).map(d => ({
-        ...d,
-        utilization: d.requiredBillableHours > 0 ? (d.bookedBillable / d.requiredBillableHours) * 100 : 0,
-    }));
+    const departments = Array.from(departmentMap.values()).map(d => {
+        const totalPotentialHours = (totalAnnualBillableHours / 12) * monthsInScope * d.employeeCount;
+        return {
+            ...d,
+            utilization: d.requiredBillableHours > 0 ? (d.bookedBillable / d.requiredBillableHours) * 100 : 0,
+            totalPotentialHours,
+        };
+    });
 
     // Calculate overall totals using only active employees
     const overall = {
@@ -511,7 +561,10 @@ const App = () => {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="name" tick={{ fill: '#64748b' }}/>
                       <YAxis unit="%" tick={{ fill: '#64748b' }} />
-                      <Tooltip cursor={{fill: 'rgba(79, 70, 229, 0.1)'}} contentStyle={{backgroundColor: 'white', borderRadius: '0.75rem', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)'}}/>
+                      <Tooltip 
+                        cursor={{fill: 'rgba(79, 70, 229, 0.1)'}} 
+                        content={<CustomTooltip />}
+                      />
                       <Legend />
                       <Bar dataKey="utilization" name="% to Target" fill="#4f46e5" radius={[4, 4, 0, 0]} />
                     </BarChart>
