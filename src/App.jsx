@@ -198,7 +198,7 @@ const App = () => {
                     totalBookedHours: 0,
                     bookedBillable: 0,
                     bookedNonBillable: 0,
-                    projects: [],
+                    projects: new Map(), // Use a Map to aggregate projects
                 });
             }
 
@@ -214,7 +214,18 @@ const App = () => {
             } else {
                 emp.bookedNonBillable += hours;
             }
-            emp.projects.push({ name: alloc.Name, task: alloc['Project (from Task)'], hours, isBillable });
+            
+            // Aggregate projects by combining name and task for a unique key
+            const projectKey = `${alloc.Name}|${alloc['Project (from Task)']}`;
+            if (!emp.projects.has(projectKey)) {
+                emp.projects.set(projectKey, {
+                    name: alloc.Name,
+                    task: alloc['Project (from Task)'],
+                    hours: 0,
+                    isBillable,
+                });
+            }
+            emp.projects.get(projectKey).hours += hours;
         }
     });
 
@@ -229,6 +240,7 @@ const App = () => {
 
         return {
             ...e,
+            projects: Array.from(e.projects.values()), // Convert the map of projects back to an array
             requiredBillableHours,
             targetPercentDisplay: e.billingTargetPercent * 100,
             percentToTarget,
