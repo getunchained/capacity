@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { ChevronDown, Users, Clock, Target, Info, RefreshCw, ChevronsUpDown, TrendingUp, Download } from 'lucide-react';
 
-// --- Helper Functions ---
+// --- Helper Functions  ---
 
 /**
  * Normalizes a name to a consistent "FIRST LAST" format for reliable matching.
