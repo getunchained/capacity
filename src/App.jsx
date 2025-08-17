@@ -279,6 +279,11 @@ const App = () => {
         
         // % to Target = (Booked Billable) / (Required Billable)
         const percentToTarget = requiredBillableHours > 0 ? (e.bookedBillable / requiredBillableHours) * 100 : 0;
+        
+        // Utilization % = (Total Booked Hours / Potential Hours)
+        const potentialHours = (totalAnnualBillableHours / 12) * monthsInScope;
+        const utilizationPercent = potentialHours > 0 ? (e.totalBookedHours / potentialHours) * 100 : 0;
+
 
         return {
             ...e,
@@ -287,6 +292,7 @@ const App = () => {
             targetPercentDisplay: e.billingTargetPercent * 100,
             percentToTarget,
             utilization: percentToTarget, // for charts
+            utilizationPercent,
         };
     });
     
@@ -591,6 +597,9 @@ const App = () => {
                             <button onClick={() => requestSort('totalBookedHours')} className="flex items-center w-full justify-end">Hrs Booked {getSortIcon('totalBookedHours')}</button>
                         </th>
                         <th className="p-3 text-sm font-semibold text-slate-500 text-right w-24">
+                            <button onClick={() => requestSort('utilizationPercent')} className="flex items-center w-full justify-end">Utilization % {getSortIcon('utilizationPercent')}</button>
+                        </th>
+                        <th className="p-3 text-sm font-semibold text-slate-500 text-right w-24">
                             <button onClick={() => requestSort('targetPercentDisplay')} className="flex items-center w-full justify-end">Target % {getSortIcon('targetPercentDisplay')}</button>
                         </th>
                         <th className="p-3 text-sm font-semibold text-slate-500 text-right w-36">
@@ -608,6 +617,7 @@ const App = () => {
                           <td className="p-3">{e.department}</td>
                           <td className="p-3 text-right font-medium">{e.requiredBillableHours.toFixed(1)}</td>
                           <td className="p-3 text-right">{e.totalBookedHours.toFixed(1)}</td>
+                          <td className="p-3 text-right">{e.utilizationPercent.toFixed(1)}%</td>
                           <td className="p-3 text-right">{e.targetPercentDisplay.toFixed(0)}%</td>
                           <td className="p-3 text-right">
                             <div className="flex items-center justify-end gap-2">
