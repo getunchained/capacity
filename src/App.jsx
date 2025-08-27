@@ -32,7 +32,7 @@ const getCurrentMonthYear = () => {
   return now.toLocaleString('en-US', { month: 'short', year: 'numeric' });
 };
 
-/** --------- NEW: Local date helpers (fix UTC off-by-one) --------- **/
+/** --------- Local date helpers (fix UTC off-by-one) --------- **/
 const formatDateLocal = (date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -46,7 +46,7 @@ const parseYMDToLocalDate = (ymd) => {
   if (!y || !m || !d) return null;
   return new Date(y, m - 1, d);
 };
-/** ---------------------------------------------------------------- **/
+/** ----------------------------------------------------------- **/
 
 /**
  * Calculates the number of business days between two dates (inclusive).
@@ -83,7 +83,6 @@ const getCurrentMonthDateRange = () => {
  */
 const getDateRangeFromMonthYear = (monthYearStr) => {
   const [monthAbbr, year] = monthYearStr.split(' ');
-  // Safe month detection via string
   const startDate = new Date(`${monthAbbr} 1, ${year}`);
   const endDate   = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0);
   return { startDate, endDate };
@@ -205,7 +204,7 @@ const App = () => {
         if (key === 'Start Date' || key === 'End Date') {
           if (value) {
             if (value.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
-              // FIX: parse to LOCAL date, not "YYYY-MM-DD" string (UTC)
+              // parse to LOCAL date
               const [mm, dd, yyyy] = value.split('/').map(Number);
               value = new Date(yyyy, mm - 1, dd);
             } else if (value.match(/^[A-Za-z]{3}-\d{1,2}$/)) {
@@ -251,7 +250,7 @@ const App = () => {
       filteredAllocations = allocationsData.filter(alloc => alloc.Month === selectedMonth);
 
     } else if (filterMode === 'dateRange' && startDate && endDate) {
-      // FIX: parse to LOCAL dates from YYYY-MM-DD inputs
+      // parse to LOCAL dates from YYYY-MM-DD inputs
       startPeriod = parseYMDToLocalDate(startDate);
       endPeriod   = parseYMDToLocalDate(endDate);
       totalBusinessDaysInScope = getBusinessDays(startPeriod, endPeriod);
@@ -286,9 +285,16 @@ const App = () => {
     const employeeMetrics = new Map();
     filteredAllocations.forEach(alloc => {
       const projectFromTask = (alloc['Project (from Task)'] || '').toString();
-      if (projectFromTask.includes('[PTO]') || projectFromTask.includes('[INT]')) return;
-      if (!filters.env && projectFromTask.includes('[ENV]')) return;
-      if (!filters.pnb && projectFromTask.toUpperCase().includes('PNB:')) return;
+
+      // Classification flags
+      const hasPTO = projectFromTask.includes('[PTO]');
+      const hasINT = projectFromTask.includes('[INT]');
+      const isENV  = projectFromTask.includes('[ENV]');
+      const isPNB  = projectFromTask.toUpperCase().includes('PNB:');
+
+      // Respect toggles: [ENV] and [PNB] control inclusion in lists/counts
+      if (!filters.env && isENV) return;
+      if (!filters.pnb && isPNB) return;
 
       const normalizedResource = normalizeName(alloc.Resource);
       const personDetails = namesMap.get(normalizedResource);
@@ -297,26 +303,41 @@ const App = () => {
           employeeMetrics.set(normalizedResource, {
             ...personDetails,
             nameForDisplay: alloc.Resource,
-            totalBookedHours: 0,
-            bookedBillable: 0,
-            bookedNonBillable: 0,
+            totalBookedHours: 0,      // excludes PTO/INT
+            bookedBillable: 0,        // excludes PTO/INT
+            bookedNonBillable: 0,     // excludes PTO/INT
+            ptoHours: 0,              // NEW
+            intHours: 0,              // NEW
             projects: new Map(),
           });
         }
         const emp = employeeMetrics.get(normalizedResource);
         const hours = alloc['Estimated Hours'];
-        const isBillable = !projectFromTask.toUpperCase().includes('PNB:');
-        emp.totalBookedHours += hours;
-        if (isBillable) emp.bookedBillable += hours; else emp.bookedNonBillable += hours;
 
-        const truncatedProjectName = alloc.Name.split(':')[0].trim();
-        const projectKey = `${normalizedResource}-${truncatedProjectName}`;
+        // PTO/INT are tracked but do not impact required or booked billable
+        if (hasPTO) {
+          emp.ptoHours += hours;
+        } else if (hasINT) {
+          emp.intHours += hours;
+        } else {
+          // normal path: PNB is non-billable, others billable
+          const isBillable = !isPNB;
+          emp.totalBookedHours += hours;
+          if (isBillable) emp.bookedBillable += hours;
+          else emp.bookedNonBillable += hours;
+        }
+
+        // Include PTO/INT in the project list as Not Billable
+        const truncatedProjectName = (alloc.Name || '').split(':')[0].trim();
+        const keySuffix = hasPTO ? 'PTO' : hasINT ? 'INT' : isPNB ? 'PNB' : 'GEN';
+        const projectKey = `${normalizedResource}-${truncatedProjectName}-${keySuffix}`;
         if (!emp.projects.has(projectKey)) {
           emp.projects.set(projectKey, {
-            name: truncatedProjectName,
-            task: alloc['Project (from Task)'].split(':')[0].trim(),
+            name: truncatedProjectName || (alloc['Project (from Task)'] || '').split(':')[0].trim(),
+            task: (alloc['Project (from Task)'] || '').split(':')[0].trim(),
             hours: 0,
-            isBillable,
+            // PTO/INT/PNB are Not Billable for display
+            isBillable: !(hasPTO || hasINT || isPNB),
           });
         }
         emp.projects.get(projectKey).hours += hours;
@@ -337,9 +358,12 @@ const App = () => {
         percentToTarget,
         utilization: percentToTarget,
         utilizationPercent,
+        ptoHours: e.ptoHours,
+        intHours: e.intHours,
       };
     });
 
+    // Totals (using employees with at least some billable to avoid noise)
     const activeEmployeesForTotals = allEmployees.filter(e => e.bookedBillable >= 1);
     const departmentMap = new Map();
     activeEmployeesForTotals.forEach(e => {
@@ -353,10 +377,10 @@ const App = () => {
         });
       }
       const dept = departmentMap.get(e.department);
-      dept.bookedBillable      += e.bookedBillable;
+      dept.bookedBillable        += e.bookedBillable;
       dept.requiredBillableHours += e.requiredBillableHours;
-      dept.totalBookedHours    += e.totalBookedHours;
-      dept.employeeCount       += 1;
+      dept.totalBookedHours      += e.totalBookedHours;
+      dept.employeeCount         += 1;
     });
 
     const departments = Array.from(departmentMap.values()).map(d => {
@@ -394,6 +418,7 @@ const App = () => {
     const departmentsWithAllocations = new Set();
     allocationsData.forEach(alloc => {
       const projectFromTask = (alloc['Project (from Task)'] || '').toString();
+      // PTO/INT/ENV/PNB rows don't gate department visibility
       if (projectFromTask.includes('[PTO]') || projectFromTask.includes('[INT]') || projectFromTask.includes('[ENV]') || projectFromTask.toUpperCase().includes('PNB:')) return;
       const normalizedResource = normalizeName(alloc.Resource);
       const department = namesDeptMap.get(normalizedResource);
@@ -451,7 +476,7 @@ const App = () => {
       alert("No data available to export.");
       return;
     }
-    const headers = ["First Last", "Title", "Department", "Required Hrs", "Hrs Booked", "Target %", "% to Target"];
+    const headers = ["First Last", "Title", "Department", "Required Hrs", "Hrs Booked", "Target %", "% of Target", "PTO Hrs", "INT Hrs"];
     const csvRows = [headers.join(',')];
     sortedEmployees.forEach(e => {
       const row = [
@@ -461,7 +486,9 @@ const App = () => {
         e.requiredBillableHours.toFixed(2),
         e.totalBookedHours.toFixed(2),
         e.targetPercentDisplay.toFixed(0),
-        e.percentToTarget.toFixed(2)
+        e.percentToTarget.toFixed(2),
+        e.ptoHours.toFixed(2),
+        e.intHours.toFixed(2),
       ];
       csvRows.push(row.join(','));
     });
@@ -551,7 +578,6 @@ const App = () => {
                   onClick={() => {
                     setFilterMode('dateRange');
                     const { startDate: monthStart, endDate: monthEnd } = getDateRangeFromMonthYear(selectedMonth);
-                    // FIX: use local formatter, not toISOString()
                     setStartDate(formatDateLocal(monthStart));
                     setEndDate(formatDateLocal(monthEnd));
                   }}
@@ -610,9 +636,9 @@ const App = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
-            <StatCard icon={<Target className="w-6 h-6 text-green-800"/>} title="Overall % to Target" value={`${analysis.overall.utilization.toFixed(1)}%`} subtext={`Booked Billable / Required Billable`} color="bg-green-200" />
+            <StatCard icon={<Target className="w-6 h-6 text-green-800"/>} title="Overall % of Target" value={`${analysis.overall.utilization.toFixed(1)}%`} subtext={`Booked Billable / Required Billable`} color="bg-green-200" />
             <StatCard icon={<Users className="w-6 h-6 text-indigo-800"/>} title="Active Resources" value={analysis.overall.employeeCount} subtext="Employees with allocated hours" color="bg-indigo-200" />
-            <StatCard icon={<Clock className="w-6 h-6 text-amber-800"/>} title="Total Hours Booked" value={analysis.overall.totalBookedHours.toLocaleString(undefined, {maximumFractionDigits: 0})} subtext="Excludes selected non-billable hours" color="bg-amber-200" />
+            <StatCard icon={<Clock className="w-6 h-6 text-amber-800"/>} title="Total Hours Booked" value={analysis.overall.totalBookedHours.toLocaleString(undefined, {maximumFractionDigits: 0})} subtext="Excludes PTO & INT" color="bg-amber-200" />
             <StatCard icon={<TrendingUp className="w-6 h-6 text-sky-800"/>} title="Total Billable Hours Available" value={analysis.overall.requiredBillableHours.toLocaleString(undefined, {maximumFractionDigits: 0})} subtext={`Based on ${analysis.totalBusinessDaysInScope} business days`} color="bg-sky-200" />
           </div>
 
@@ -642,7 +668,7 @@ const App = () => {
                         <button onClick={() => requestSort('targetPercentDisplay')} className="flex items-center w-full justify-end">Target % {getSortIcon('targetPercentDisplay')}</button>
                       </th>
                       <th className="p-3 text-sm font-semibold text-slate-500 text-right w-36">
-                        <button onClick={() => requestSort('percentToTarget')} className="flex items-center w-full justify-end">% to Target {getSortIcon('percentToTarget')}</button>
+                        <button onClick={() => requestSort('percentToTarget')} className="flex items-center w-full justify-end">% of Target {getSortIcon('percentToTarget')}</button>
                       </th>
                     </tr>
                   </thead>
@@ -700,8 +726,20 @@ const App = () => {
                 <p className="text-xl font-bold">{activeEmployee.targetPercentDisplay.toFixed(0)}%</p>
               </div>
               <div>
-                <p className="text-xs text-slate-500">P% to Target</p>
+                <p className="text-xs text-slate-500">% of Target</p>
                 <p className="text-xl font-bold text-indigo-600">{activeEmployee.percentToTarget.toFixed(1)}%</p>
+              </div>
+            </div>
+
+            {/* PTO / INT summary next to Booked Billable */}
+            <div className="grid grid-cols-2 md:grid-cols-2 gap-4 -mt-2 mb-6 text-center">
+              <div>
+                <p className="text-xs text-slate-500">PTO (Not Billable)</p>
+                <p className="text-lg font-semibold">{activeEmployee.ptoHours.toFixed(1)} hrs</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">INT (Not Billable)</p>
+                <p className="text-lg font-semibold">{activeEmployee.intHours.toFixed(1)} hrs</p>
               </div>
             </div>
 
@@ -716,7 +754,7 @@ const App = () => {
                     </div>
                     <div className="text-right">
                       <p className="font-bold">{p.hours.toFixed(1)} hrs</p>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${p.isBillable ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{p.isBillable ? 'Billable' : 'Non-Billable'}</span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${p.isBillable ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>{p.isBillable ? 'Billable' : 'Not Billable'}</span>
                     </div>
                   </li>
                 ))}
