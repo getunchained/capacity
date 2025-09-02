@@ -613,6 +613,13 @@ const App = () => {
                 </div>
               )}
 
+              <div className="relative">
+                <select value={selectedDepartment} onChange={e => setSelectedDepartment(e.target.value)} className="appearance-none bg-white border border-slate-300 rounded-lg py-2 pl-3 pr-8 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition">
+                  {uniqueDepartments.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              </div>
+
               <div className="flex items-center gap-2 p-2 ml-4 bg-white border border-slate-300 rounded-lg shadow-sm">
                 <p className="text-sm text-slate-600 font-semibold">Include Hours:</p>
                 <label className="flex items-center text-sm text-slate-500">
@@ -628,8 +635,7 @@ const App = () => {
               <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg ml-auto">
                 <Info className="w-5 h-5 text-blue-500" />
                 <p className="text-sm text-blue-700">
-                  {filterMode === 'month' ? `Displaying data for ${selectedDepartment} in ${selectedMonth}.` :
-                    (startDate && endDate ? `Displaying data for ${selectedDepartment} from ${startDate} to ${endDate}.` : `Select a date range to filter.`)}
+                  Displaying data for <span className="font-bold">{selectedDepartment}</span>.
                 </p>
               </div>
             </div>
@@ -643,6 +649,29 @@ const App = () => {
           </div>
 
           <div className="grid grid-cols-1 gap-8">
+            <div className="bg-white p-6 rounded-2xl shadow-sm">
+                <h3 className="font-bold text-lg mb-4 text-slate-700">Department % to Target</h3>
+                <div className="w-full h-96">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart 
+                        data={analysis.departments} 
+                        margin={{ top: 5, right: 20, left: -10, bottom: 5 }}
+                        onClick={handleBarClick}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fill: '#64748b' }}/>
+                      <YAxis unit="%" tick={{ fill: '#64748b' }} />
+                      <Tooltip 
+                        cursor={{fill: 'rgba(79, 70, 229, 0.1)'}} 
+                        content={<CustomTooltip />}
+                      />
+                      <Legend />
+                      <Bar dataKey="utilization" name="% to Target" fill="#4f46e5" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
             <div className="bg-white p-6 rounded-2xl shadow-sm">
               <h3 className="font-bold text-lg mb-4 text-slate-700">Resource Details</h3>
               <div className="overflow-x-auto">
@@ -768,3 +797,4 @@ const App = () => {
 };
 
 export default App;
+
